@@ -1,0 +1,52 @@
+# ==========================================
+# 1. Özel / Bağlam & Analiz Belgeleri
+# ==========================================
+proje_baglam_ve_gecmis*
+md/
+*.md (o1ueeu)*
+
+# ==========================================
+# 2. Model Ağırlıkları (Büyük Boyutlu Dosyalar)
+# ==========================================
+*.pt
+*.onnx
+*.engine
+weights/
+archive/
+
+# ==========================================
+# 3. Veri Setleri ve Eğitim Çıktıları
+# ==========================================
+datasets/
+runs/
+
+# ==========================================
+# 4. Yerel Veritabanı, Videolar ve Anlık Görüntüler
+# ==========================================
+data/olaylar.db
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/input_videos/*
+!data/input_videos/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# ==========================================
+# 5. Python Sanal Ortamı ve Önbellekler
+# ==========================================
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+logs/
+
+# ==========================================
+# 6. IDE ve Sistem Dosyaları
+# ==========================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

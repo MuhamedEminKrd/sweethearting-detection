@@ -1,0 +1,33 @@
+source:
+  type: "camera"
+  camera_index: 0
+  video_path: "data/test_video.mp4"
+
+# El dedektoru: tek sinif ("el" - acik/kapali fark etmez, sadece "burada bir el var mi").
+# Veri seti arastirmasi/toplama surecinde - agirlik dosyasi henuz yok.
+model:
+  hand_path: "runs/el_modelim_v1-7/weights/best.pt"
+  hand_threshold: 0.35
+  pose_path: "yolo26x-pose.pt"
+
+# Overlay renklendirmesi icin. Asil hirsizlik karari core/rules.py'daki
+# (TheftRuleEngine) iskelet+el-tespiti kombinasyonuna dayanir.
+classes:
+  el: "KRITIK"
+
+# Iskelet tabanli yakinlik/eslesme esikleri. Omuz genisligine ORANLI - kisi
+# kameraya yakin/uzak olsa da, boylu/kisa olsa da tutarli kalir.
+pose:
+  proximity_ratio_threshold: 0.35   # bilek-kalca mesafesi / omuz genisligi < bu oran ise "asiri yakin"
+  hand_match_radius_ratio: 0.25     # el kutusunun bilege "ait" sayilmasi icin omuz genisligine oranli yaricap
+
+rules:
+  cooldown_seconds: 3.0          # Kasa kapandiktan sonra riskin devam ettigi sure
+  debounce_seconds: 5.0          # AlarmManager: ayni taraf (sol/sag) icin tekrar alarm basmadan once beklenecek sure
+
+performance:
+  target_fps: 15
+  min_fps: 5
+
+database:
+  path: "data/olaylar.db"
