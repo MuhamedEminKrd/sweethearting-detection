@@ -21,12 +21,12 @@ class Detector:
             logger.critical(f"[M-02] Model yuklenemedi: {e}")
             raise e
 
-    def detect(self, frame):
+    def detect_and_track(self, frame):
         """
-        Kameradan gelen tek bir kareyi (frame) alir, icindeki elleri bulur.
-        Geriye tespitlerin listesini dondurur.
+        Kameradan gelen tek bir kareyi alir, icindeki elleri ByteTrack ile takip eder.
+        Geriye tespitlerin listesini dondurur (track_id dahil).
         """
-        results = self.model.predict(source=frame, conf=self.threshold, verbose=False)
+        results = self.model.track(source=frame, conf=self.threshold, persist=True, tracker="bytetrack.yaml", verbose=False)
 
         detections = []
 
@@ -40,11 +40,15 @@ class Detector:
             class_name = self.model.names[class_id]
             confidence = box.conf[0].item()
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+            
+            # Takip ediliyorsa ID alinir, henuz ID atanmadiysa None doner
+            track_id = int(box.id[0].item()) if box.id is not None else -1
 
             detections.append({
                 "class_name": class_name,
                 "confidence": confidence,
-                "bbox": (x1, y1, x2, y2)
+                "bbox": (x1, y1, x2, y2),
+                "track_id": track_id
             })
 
         return detections

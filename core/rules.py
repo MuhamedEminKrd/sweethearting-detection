@@ -1,109 +1,135 @@
-import math
 import time
+import cv2
+import numpy as np
 from config import settings
 from utils.logger import logger
 
-WRIST_HIP_PAIRS = [("sol_bilek", "sol_kalca"), ("sag_bilek", "sag_kalca")]
-
-
 class TheftRuleEngine:
     """
-    Sanal POS logu + iskelet tabanli hirsizlik supheciligi kural motoru.
-
-    Kasanin durumu klavyeden simule edilir (main.py'de 'o'/'c' tuslari).
-    Risk penceresi (kasa acik VEYA cooldown suruyorken) aktifken, her el
-    (sol/sag) icin:
-
-        1. Bilek-kalca mesafesi (omuz genisligine oranli) COK YAKIN mi?
-        2. O bilegin cevresinde el dedektoru BIR EL BULABILDI MI?
-
-    (1) evet VE (2) hayir ise -> ALARM. Elin acik/kapali olmasi, icinde
-    para olup olmamasi ONEMLI DEGIL - onemli olan, kasa aciktkan, bilek
-    cebe/bele bu kadar yakinken elin görüş alanından fiziksel olarak
-    kaybolmus olmasidir.
+    Bolge (ROI) ve Takip (Tracking) tabanli yeni hirsizlik kural motoru.
+    İskelet (pose) yerine ellerin bolgeler arasi gecisini takip eder.
     """
 
     def __init__(self):
-        self.cooldown_seconds = settings["rules"]["cooldown_seconds"]
-        self.proximity_ratio = settings["pose"]["proximity_ratio_threshold"]
-        self.match_radius_ratio = settings["pose"]["hand_match_radius_ratio"]
+        # Ayarlari oku
+        self.zones = settings.get("zones", {})
+        
+        # Poligonlari numpy dizilerine cevir
+        self.polygons = {}
+        for zone_name in ["etkilesim", "kasa", "tehlike"]:
+            points = self.zones.get(zone_name, [])
+            if len(points) >= 3:
+                self.polygons[zone_name] = np.array(points, np.int32)
+            else:
+                self.polygons[zone_name] = None
+                if zone_name != "etkilesim": # Etkilesim sart degil ama kasa ve tehlike sart
+                    logger.warning(f"Bolge eksik: {zone_name}. setup_zones.py ile cizmeniz onerilir.")
 
+        # track_id bazli gecmis: { track_id: {"visited_etkilesim": bool, "visited_kasa": bool, "alarm_triggered": bool, "last_seen": float} }
+        self.track_history = {}
+        
+        # Artik klavyeden kasa acma simülasyonu yok ama overlay.py patlamasin diye mock ozellikler
         self.kasa_acik = False
-        self.close_time = None
 
     def kasa_ac(self):
-        self.kasa_acik = True
-        self.close_time = None
-        logger.info("[POS] Kasa ACILDI (simule).")
+        pass # Artik kullanilmiyor
 
     def kasa_kapat(self):
-        self.kasa_acik = False
-        self.close_time = time.time()
-        logger.info(f"[POS] Kasa KAPANDI (simule). {self.cooldown_seconds:.0f}s cooldown basladi.")
-
-    def is_risk_window_active(self):
-        if self.kasa_acik:
-            return True
-        if self.close_time is not None and (time.time() - self.close_time) < self.cooldown_seconds:
-            return True
-        return False
-
+        pass # Artik kullanilmiyor
+        
     def cooldown_remaining(self):
-        if self.close_time is None:
-            return 0.0
-        return max(0.0, self.cooldown_seconds - (time.time() - self.close_time))
+        return 0.0 # Artik kullanilmiyor
 
-    @staticmethod
-    def _distance(a, b):
-        return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+    def _get_zone(self, center_x, center_y):
+        """Merkez noktasinin hangi poligona dustugunu bulur."""
+        pt = (float(center_x), float(center_y))
+        
+        # Oncelik sirasi: Tehlike > Kasa > Etkilesim
+        if self.polygons.get("tehlike") is not None:
+            if cv2.pointPolygonTest(self.polygons["tehlike"], pt, False) >= 0:
+                return "tehlike"
+                
+        if self.polygons.get("kasa") is not None:
+            if cv2.pointPolygonTest(self.polygons["kasa"], pt, False) >= 0:
+                return "kasa"
+                
+        if self.polygons.get("etkilesim") is not None:
+            if cv2.pointPolygonTest(self.polygons["etkilesim"], pt, False) >= 0:
+                return "etkilesim"
+                
+        return "disari"
 
-    def _el_bulundu_mu(self, wrist, hand_detections, margin):
+    def evaluate(self, hand_detections):
         """
-        Bilek noktasi, bir el kutusunun (kenardan 'margin' kadar genisletilmis)
-        icinde mi diye bakar. Kutunun MERKEZINE mesafe yerine bunu kullaniyoruz
-        cunku bilek, elin bir kenarindadir (parmak uclarina dogru uzanan kutunun
-        ortasinda degil) - merkez-mesafe olcumu gercek elleri bile kacirabiliyordu.
-        """
-        for det in hand_detections:
-            x1, y1, x2, y2 = det["bbox"]
-            if (x1 - margin) <= wrist["x"] <= (x2 + margin) and (y1 - margin) <= wrist["y"] <= (y2 + margin):
-                return True
-        return False
-
-    def evaluate(self, people, hand_detections):
-        """
-        people: PoseAnalyzer.analyze() ciktisi (omuz/dirsek/bilek/kalca noktalari)
-        hand_detections: Detector.detect() ciktisi ([{"class_name","confidence","bbox"}])
-
-        Return: [{"taraf": "sol_bilek"|"sag_bilek", "mesafe_orani": float}]
+        hand_detections: Detector.detect_and_track() ciktisi
+        Return: [{"taraf": "El-ID", "mesafe_orani": 1.0 (Mock)}]
         """
         alarms = []
+        current_time = time.time()
+        
+        # aktif track_id'leri topla
+        active_track_ids = set()
 
-        if not self.is_risk_window_active():
-            return alarms
+        for det in hand_detections:
+            track_id = det["track_id"]
+            if track_id == -1:
+                continue # Henuz ID atanmamis
+                
+            active_track_ids.add(track_id)
+            
+            x1, y1, x2, y2 = det["bbox"]
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            
+            # Gecmis kaydi yoksa olustur
+            if track_id not in self.track_history:
+                self.track_history[track_id] = {
+                    "time_etkilesim": 0.0, 
+                    "time_kasa": 0.0, 
+                    "alarm_triggered": False,
+                    "last_seen": current_time,
+                    "last_zone": "disari"
+                }
+                
+            history = self.track_history[track_id]
+            history["last_seen"] = current_time
+            
+            current_zone = self._get_zone(cx, cy)
+            
+            # Guncel bolgeyi kaydet
+            if current_zone != "disari":
+                history["last_zone"] = current_zone
+            
+            if current_zone == "etkilesim":
+                history["time_etkilesim"] = current_time
+            elif current_zone == "kasa":
+                history["time_kasa"] = current_time
 
-        for person in people:
-            omuz_genisligi = person["omuz_genisligi"]
-            if omuz_genisligi <= 0:
-                continue
+        # Kaybolan elleri kontrol et (0.9 saniye sarti)
+        for t_id, history in list(self.track_history.items()):
+            time_since_last_seen = current_time - history["last_seen"]
+            
+            # Ziyaretlerin ustunden cok zaman gectiyse (ornek: 15 saniye), bunlari "eski" say.
+            # Yani kasiyer 15 saniye once kasaya dokunup simdi elini cebine atiyorsa bu hirsizlik degildir.
+            visited_etkilesim_recently = (current_time - history["time_etkilesim"]) < 15.0 and history["time_etkilesim"] > 0
+            visited_kasa_recently = (current_time - history["time_kasa"]) < 15.0 and history["time_kasa"] > 0
+            
+            # Eger el 0.9 saniyeden fazladir kayipsa ve en son Tehlike bolgesindeyse
+            if time_since_last_seen >= 0.9 and not history["alarm_triggered"]:
+                if history["last_zone"] == "tehlike":
+                    # SENARYO 1: Musteriden alip cebe atma (Etkilesim -> Tehlike -> Kaybolma)
+                    if visited_etkilesim_recently and not visited_kasa_recently:
+                        logger.warning(f"[R-01] ALARM: El-{t_id} kasaya ugramadan cebe gitti ve KAYBOLDU (>{time_since_last_seen:.1f}s)!")
+                        alarms.append({"taraf": f"El-{t_id}", "mesafe_orani": 1.0})
+                        history["alarm_triggered"] = True
+                        
+                    # SENARYO 2: Kasadan para alip cebe atma (Kasa -> Tehlike -> Kaybolma)
+                    elif visited_kasa_recently:
+                        logger.warning(f"[R-02] ALARM: El-{t_id} kasadan cikip cebe/bele gitti ve KAYBOLDU (>{time_since_last_seen:.1f}s)!")
+                        alarms.append({"taraf": f"El-{t_id}", "mesafe_orani": 1.0})
+                        history["alarm_triggered"] = True
 
-            radius = omuz_genisligi * self.match_radius_ratio
-
-            for wrist_name, hip_name in WRIST_HIP_PAIRS:
-                wrist = person[wrist_name]
-                hip = person[hip_name]
-
-                mesafe_orani = self._distance(wrist, hip) / omuz_genisligi
-                if mesafe_orani > self.proximity_ratio:
-                    continue  # bilek kalcaya yeterince yakin degil
-
-                if self._el_bulundu_mu(wrist, hand_detections, radius):
-                    continue  # el hala gorunur durumda, supheli degil
-
-                logger.warning(
-                    f"[R-01] ALARM: {wrist_name} kalcaya asiri yakin "
-                    f"(oran {mesafe_orani:.2f}) ve el tespit edilemedi."
-                )
-                alarms.append({"taraf": wrist_name, "mesafe_orani": mesafe_orani})
+            # Uzun sure gorunmeyen (orn: 5 saniye) track_id'leri temizle (Memory leak onleme)
+            if time_since_last_seen > 5.0:
+                del self.track_history[t_id]
 
         return alarms
