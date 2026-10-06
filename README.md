@@ -32,8 +32,9 @@ Perakende sektöründe hırsızlıkların ve envanter açıklarının önemli bi
 ### Karşılaşılan Temel Zorluklar:
 1. **Küçük Nesne ve Piksel Kaybı:** Tavan kamerasından bakıldığında katlanmış banknotlar (~12x15 piksel) ve barkodlar kapalı avuç içinde optik olarak görünmez hale gelir.
 2. **2D Projeksiyon ve Derinlik (Z-Ekseni) Kaybı:** 90° dik tavan kamerasında kasiyerin tezgâha/POS cihazına ileri uzanması ile elini cebine indirmesi 2 boyutlu sensörde aynı eksene düşerek birbirine karışır (aradaki fark yalnızca 8 pikseldir).
-3. **Kimlik Sıçraması (ID Switch):** Kasiyer ellerini çapraz hareket ettirdiğinde bağımsız nesne takip algoritmaları (ByteTrack vb.) el kimliklerini şaşırmaktadır.
-4. **Veri Sızıntısı ve Aşırı Öğrenme:** CCTV karelerinin peş peşe otomatik etiketlenmesi modelde sahte mAP=0.995 başarımı üretmiş, ancak model sahada genelleme yeteneğini yitirmiştir.
+3. **Kimlik Sıçraması (ID Switch):** Kasiyer ellerini çapraz hareket ettirdiğinde bağımsız nesne takip algoritmalar
+4. ı (ByteTrack vb.) el kimliklerini şaşırmaktadır.
+5. **Veri Sızıntısı ve Aşırı Öğrenme:** CCTV karelerinin peş peşe otomatik etiketlenmesi modelde sahte mAP=0.995 başarımı üretmiş, ancak model sahada genelleme yeteneğini yitirmiştir.
 
 ---
 
@@ -94,15 +95,6 @@ Nihai sistem, iki farklı derin öğrenme modelini ve biyomekanik kuralları bir
    *Bu formül sayesinde personelin boyundan veya kameraya olan uzaklığından bağımsız, değişmez (invariant) bir metrik elde edilir.*
 3. **El Oklüzyon (Kaybolma) Denetimi:** Bilek kalça/cep bölgesine yaklaştığında, özel eğitilmiş nesne tespit modeli devreye girer. Elin fiziksel olarak cebin içinde kaybolup kaybolmadığı doğrulanır.
 4. **Alarm & Kanıt Saklama:** Şüpheli cebe indirme doğrulandığında `AlarmManager` debounce filtresiyle tekil alarm üretir, o anki yüksek çözünürlüklü kareyi `data/snapshots/` klasörüne kaydeder ve SQLite veritabanına telemetri kaydı düşer.
-
----
-
-## 📷 Sistem Telemetri ve Örnek Çıktılar
-
-| Dirsek Açısı Hesaplama (`aci_ornek.jpg`) | Normalize Bilek-Kalça Analizi (`bilek_kalca_ornek.jpg`) |
-|:---:|:---:|
-| ![Dirsek Açısı](assets/aci_ornek.jpg) | ![Bilek Kalça](assets/bilek_kalca_ornek.jpg) |
-| **Açı Telemetrisi:** $A-B-C$ vektörleri üzerinden dirsek fleksiyon takibi. | **Biyomekanik Analiz:** Omuz genişliğine göre normalize edilmiş cep yakınlığı. |
 
 ---
 
